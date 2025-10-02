@@ -1,4 +1,4 @@
-# Projet Smartcities - hepl-votrenom
+# Projet Smartcities - HEPL - Mulic Osman
 
 Ce repository est créé dans le cadre du cours de **MicroPython** et du projet **Smartcorridor**. Il sert de support à mon **évaluation continue**.
 
@@ -7,6 +7,7 @@ Ce repository est créé dans le cadre du cours de **MicroPython** et du projet 
 ### RPi Pico W
 Le Raspberry Pi Pico W est le microcontrôleur utilisé pour ce projet. Il est basé sur la puce RP2040 et se distingue par son support Wi-Fi intégré, essentiel pour les fonctionnalités **network** du projet.
 
+![image](https://user-images.githubusercontent.com/123806349/215263828-670ae9c1-3d4e-4bfa-a0dd-d2cfe9a20086.png)
 * **Puce :** <Indiquer la puce exacte (ex: RP2040)>
 * **Microcontrôleur :** <Ajouter une brève description de ses capacités (mémoire, cœurs, etc.)>
 
