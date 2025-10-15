@@ -43,7 +43,7 @@ def play(freq, time):
     buzzer.freq(freq)
     buzzer.duty_u16(read_volume())
     LED.value(1)
-    sleep(max(0, time - 0.05))
+    sleep(time)
     LED.value(0)
 
 def N(time):
