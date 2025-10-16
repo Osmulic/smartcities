@@ -26,7 +26,7 @@ prev_sound = SOUND_SENSOR.read_u16() // 256
 cpt = 0
 pulsation = 0
 bpm = 0
-
+moyenne_bpm = []
 while True:
     sound = SOUND_SENSOR.read_u16() // 256
     # Détection de pic sonore simple
@@ -41,8 +41,14 @@ while True:
     if cpt >= 200:
         bpm = pulsation * 30
         print("BPM:", bpm)
+        moyenne_bpm.append(bpm)
         pulsation = 0
         cpt = 0
-
+        if len(moyenne_bpm) == 30 :
+            avg_bpm = sum(moyenne_bpm) // len(moyenne_bpm)
+            print("BPM moyen sur 1min:", avg_bpm)
+            with open("bpm_log.txt", "a") as f:
+                f.write("moyenne : {} bpm\n".format(avg_bpm))
+            moyenne_bpm = []
             
     sleep(0.01)  # Fréquence d'échantillonnage
