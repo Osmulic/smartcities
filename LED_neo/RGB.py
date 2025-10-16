@@ -1,5 +1,5 @@
 from ws2812 import WS2812
-from utime import sleep
+from utime import sleep, localtime
 from machine import ADC
 from random import randint
 
@@ -47,8 +47,12 @@ while True:
         if len(moyenne_bpm) == 30 :
             avg_bpm = sum(moyenne_bpm) // len(moyenne_bpm)
             print("BPM moyen sur 1min:", avg_bpm)
+            now = localtime()
+            timestamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
+                now[0], now[1], now[2], now[3], now[4], now[5]
+            )
             with open("bpm_log.txt", "a") as f:
-                f.write("moyenne : {} bpm\n".format(avg_bpm))
+                f.write("{} : {} bpm\n".format(timestamp, avg_bpm))
             moyenne_bpm = []
             
     sleep(0.01)  # Fréquence d'échantillonnage
