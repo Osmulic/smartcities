@@ -19,8 +19,8 @@ def time_sync(timezone_offset_hours=0):
 def set_angle(hour):
     angle = (hour % 12) * 15
     # Limites sécurité
-    min_u16 = 4000
-    max_u16 = 16020
+    min_u16 = 16020
+    max_u16 = 4000
     duty = int(min_u16 + (max_u16 - min_u16) * angle / 180)
     servo.duty_u16(duty)
     return angle
