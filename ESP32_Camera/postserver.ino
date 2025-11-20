@@ -67,8 +67,7 @@ void loop() {
 
         // Commencer la publication
         if (mqttClient.beginPublish(MQTT_TOPIC, TimerCAM.Camera.fb->len, false)) {
-            // Écrire les
-             données de l'image
+            // Écrire les données de l'image
             mqttClient.write(TimerCAM.Camera.fb->buf, TimerCAM.Camera.fb->len);
             // Terminer la publication
             if (mqttClient.endPublish()) {
