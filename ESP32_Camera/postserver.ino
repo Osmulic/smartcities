@@ -1,87 +1,85 @@
-/**
- * @file http_post.ino
- * @author SeanKwok (shaoxiang@m5stack.com)
- * @brief TimerCAM HTTP Post Test
- * @version 0.1
- * @date 2023-12-28
- *
- *
- * @Hardwares: TimerCAM
- * @Platform Version: Arduino M5Stack Board Manager v2.0.9
- * @Dependent Library:
- * TimerCam-arduino: https://github.com/m5stack/TimerCam-arduino
- * ArduinoHttpClient: https://github.com/arduino-libraries/ArduinoHttpClient
- */
-
+#include <PubSubClient.h>
+ 
 #include "M5TimerCAM.h"
 #include <WiFi.h>
-#include <ArduinoHttpClient.h>
-
-#define ssid     "ssid"
-#define password "password"
-
-#define SERVER "httpbin.org"
-
-WiFiClient wifi;
-HttpClient client = HttpClient(wifi, SERVER);
-
+#include <PubSubClient.h>
+ 
+#define WIFI_SSID     "ssid"
+#define WIFI_PASS     "password"
+ 
+// --- MQTT ---
+#define MQTT_SERVER  "ip_address"
+#define MQTT_PORT    1883
+#define MQTT_TOPIC   "nichoir/photo"
+ 
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
+ 
+void reconnectMQTT() {
+  while (!mqttClient.connected()) {
+    Serial.print("Connecting to MQTT...");
+    if (mqttClient.connect("TimerCAMClient")) {
+      Serial.println("Connected!");
+    } else {
+      Serial.print("Failed, rc=");
+      Serial.println(mqttClient.state());
+      delay(2000);
+    }
+  }
+}
+ 
 void setup() {
+    Serial.begin(115200);
+   
     TimerCAM.begin();
-
+ 
     if (!TimerCAM.Camera.begin()) {
         Serial.println("Camera Init Fail");
         return;
     }
     Serial.println("Camera Init Success");
-
+ 
     TimerCAM.Camera.sensor->set_pixformat(TimerCAM.Camera.sensor, PIXFORMAT_JPEG);
-    // 2MP Sensor
     TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_UXGA);
-    // 3MP Sensor
-    // TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_QXGA);
-
     TimerCAM.Camera.sensor->set_vflip(TimerCAM.Camera.sensor, 1);
-    TimerCAM.Camera.sensor->set_hmirror(TimerCAM.Camera.sensor, 0);
-
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    WiFi.setSleep(false);
-    Serial.println("");
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
-    // Wait for connection
+ 
+    // --- WIFI ---
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.print("Connecting to WiFi");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-
-    Serial.println("");
-
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    Serial.println(" Connected!");
+ 
+    // --- MQTT ---
+    mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+    reconnectMQTT();
 }
-
+ 
 void loop() {
+    if (!mqttClient.connected()) reconnectMQTT();
+    mqttClient.loop();
+
     if (TimerCAM.Camera.get()) {
-        Serial.println("making POST request");
+        Serial.println("Photo capturée, envoi MQTT...");
+        Serial.println(TimerCAM.Camera.fb->len);
 
-        String contentType = "image/jpeg";
+        // Commencer la publication
+        if (mqttClient.beginPublish(MQTT_TOPIC, TimerCAM.Camera.fb->len, false)) {
+            // Écrire les
+             données de l'image
+            mqttClient.write(TimerCAM.Camera.fb->buf, TimerCAM.Camera.fb->len);
+            // Terminer la publication
+            if (mqttClient.endPublish()) {
+                Serial.println("Image envoyée via MQTT !");
+            } else {
+                Serial.println("Erreur lors de la fin de l'envoi MQTT...");
+            }
+        } else {
+            Serial.println("Erreur lors du début de l'envoi MQTT...");
+        }
 
-        // client.post("/post", contentType, postData);
-        client.post("/post", contentType.c_str(), TimerCAM.Camera.fb->len, TimerCAM.Camera.fb->buf);
-
-        // read the status code and body of the response
-        int statusCode  = client.responseStatusCode();
-        String response = client.responseBody();
-
-        Serial.print("Status code: ");
-        Serial.println(statusCode);
-        Serial.print("Response: ");
-        Serial.println(response);
-
-        Serial.println("Wait five seconds");
         TimerCAM.Camera.free();
         delay(5000);
     }
