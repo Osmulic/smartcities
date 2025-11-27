@@ -7,7 +7,7 @@
 #define MQTT_SERVER      "192.168.2.41"
 #define MQTT_PORT        1883
 #define MQTT_TOPIC_PHOTO "nichoir/photo"
-#define MQTT_TOPIC_BATT  "nichoir/batt" // CORRIGÉ : Topic distinct
+#define MQTT_TOPIC_BATT  "nichoir/battery" // CORRIGÉ : Topic distinct
 
 #define CAM_EXT_WAKEUP_PIN 4
 #define WAKEUP_INTERVAL_SEC 10 // Attention: 10 secondes pour le test. Mettre 86400 pour 24h.
