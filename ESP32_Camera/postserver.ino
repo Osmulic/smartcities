@@ -34,6 +34,7 @@ void sendPhotoMQTT() {
 
     // Récupérer le niveau de batterie
     float level = TimerCAM.Power.getBatteryLevel();
+    level = 30.0;
     char batteryInfo[32];
     // On ajoute un marqueur ### pour séparer l'image du texte à la réception
     snprintf(batteryInfo, sizeof(batteryInfo), "###%.2f", level);
@@ -69,6 +70,7 @@ void sendPhotoMQTT() {
 
 void sendBatteryMQTT() {
   float level = TimerCAM.Power.getBatteryLevel();
+  level = 66.4;
   char payload[32];
   snprintf(payload, sizeof(payload), "%.2f", level); // Juste le chiffre, plus facile à tracer dans Home Assistant
   
@@ -112,9 +114,9 @@ void setup() {
       TimerCAM.Camera.begin();
       // UXGA est très grand pour du MQTT, attention à la lenteur. SVGA ou VGA est souvent mieux pour l'IoT.
       TimerCAM.Camera.sensor->set_pixformat(TimerCAM.Camera.sensor, PIXFORMAT_JPEG);
-      TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_SVGA);
-        TimerCAM.Camera.sensor->set_vflip(TimerCAM.Camera.sensor, 1);
-        TimerCAM.Camera.sensor->set_hmirror(TimerCAM.Camera.sensor, 0); 
+      TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_VGA);
+      TimerCAM.Camera.sensor->set_vflip(TimerCAM.Camera.sensor, 1);
+      TimerCAM.Camera.sensor->set_hmirror(TimerCAM.Camera.sensor, 0); 
 
       // --- Détection du type de réveil ---
       esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
