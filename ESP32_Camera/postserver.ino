@@ -1,113 +1,156 @@
-#include "M5TimerCAM.h"
-#include <WiFi.h>
-#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
+#include <WiFiManager.h>
 #include <PubSubClient.h>
+#include "M5TimerCAM.h"
 
-// --- CONFIGURATION ---
-#define MQTT_SERVER     "192.168.129.140"
-#define MQTT_PORT       1883
-#define MQTT_TOPIC      "nichoir/photo"
-#define SEND_INTERVAL   5000  // Time between photos in ms
+// Note : SSID et PASS sont gérés par WiFiManager, pas besoin de les définir ici sauf si tu veux forcer une connexion code.
+
+#define MQTT_SERVER      "192.168.2.41"
+#define MQTT_PORT        1883
+#define MQTT_TOPIC_PHOTO "nichoir/photo"
+#define MQTT_TOPIC_BATT  "nichoir/batt" // CORRIGÉ : Topic distinct
+
+#define CAM_EXT_WAKEUP_PIN 4
+#define WAKEUP_INTERVAL_SEC 10 // Attention: 10 secondes pour le test. Mettre 86400 pour 24h.
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
-unsigned long lastCaptureTime = 0;
-
 void reconnectMQTT() {
-    // Loop until we're reconnected
-    while (!mqttClient.connected()) {
-        Serial.print("Connecting to MQTT...");
-        // Create a random client ID
-        String clientId = "TimerCAM-" + String(random(0xffff), HEX);
-        
-        if (mqttClient.connect(clientId.c_str())) {
-            Serial.println("Connected!");
-        } else {
-            Serial.print("Failed, rc=");
-            Serial.print(mqttClient.state());
-            Serial.println(" try again in 2 seconds");
-            delay(2000);
-        }
+  // On essaye 3 fois max pour ne pas vider la batterie si le serveur est down
+  int attempts = 0;
+  while (!mqttClient.connected() && attempts < 3) {
+    if (mqttClient.connect("TimerCAMClient")) {
+      Serial.println("MQTT connecté");
+    } else {
+      delay(1000);
+      attempts++;
     }
+  }
+}
+
+void sendPhotoMQTT() {
+  if (TimerCAM.Camera.get()) {
+    Serial.println("Photo capturée, envoi MQTT...");
+
+    // Récupérer le niveau de batterie
+    float level = TimerCAM.Power.getBatteryLevel();
+    char batteryInfo[32];
+    // On ajoute un marqueur ### pour séparer l'image du texte à la réception
+    snprintf(batteryInfo, sizeof(batteryInfo), "###%.2f%", level);
+
+    // Taille totale = image + "###" + info batterie
+    size_t totalSize = TimerCAM.Camera.fb->len + strlen(batteryInfo);
+
+    // Augmenter la taille du buffer MQTT si nécessaire (par défaut c'est souvent 256 octets, trop petit pour une image)
+    // Note: beginPublish gère le streaming, donc le buffer size est moins critique, mais attention aux limites.
+    if (mqttClient.beginPublish(MQTT_TOPIC_PHOTO, totalSize, false)) {
+      
+      // 1. Envoyer l'image
+      mqttClient.write(TimerCAM.Camera.fb->buf, TimerCAM.Camera.fb->len);
+      
+      // 2. Envoyer les infos batterie à la suite
+      mqttClient.write((const uint8_t*)batteryInfo, strlen(batteryInfo));
+
+      if (mqttClient.endPublish()) {
+        Serial.printf("Image + batterie envoyées (%.2f V)\n", level);
+      } else {
+        Serial.println("Erreur lors de la fin de l'envoi MQTT...");
+      }
+    } else {
+      Serial.println("Erreur au début de l'envoi MQTT. Vérifiez la connexion.");
+    }
+
+    // Libérer la mémoire APRES l'envoi
+    TimerCAM.Camera.free();
+  } else {
+    Serial.println("Echec capture photo");
+  }
+}
+
+void sendBatteryMQTT() {
+  float level = TimerCAM.Power.getBatteryLevel();
+  char payload[32];
+  snprintf(payload, sizeof(payload), "%.2f", level); // Juste le chiffre, plus facile à tracer dans Home Assistant
+  
+  // CORRIGÉ : On envoie le char array 'payload', pas le float 'level'
+  mqttClient.publish(MQTT_TOPIC_BATT, payload); 
+  Serial.printf("Batterie envoyée : %s %\n", payload);
 }
 
 void setup() {
-    Serial.begin(115200);
-    
-    // 1. Initialize Camera (Before WiFi to ensure hardware is ready)
-    TimerCAM.begin();
-    if (!TimerCAM.Camera.begin()) {
-        Serial.println("Camera Init Fail");
-        while(true); // Stop here if camera fails
-    }
-    Serial.println("Camera Init Success");
+  Serial.begin(115200);
+  TimerCAM.begin(true);
 
-    // Camera Settings
-    TimerCAM.Camera.sensor->set_pixformat(TimerCAM.Camera.sensor, PIXFORMAT_JPEG);
-    // Note: UXGA (1600x1200) creates large packets. If MQTT fails, try FRAMESIZE_SVGA
-    TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_VGA); 
-    TimerCAM.Camera.sensor->set_vflip(TimerCAM.Camera.sensor, 1);
-    TimerCAM.Camera.sensor->set_hmirror(TimerCAM.Camera.sensor, 0);
+  // --- Connexion WiFi ---
+  WiFiManager wm;
+  
+  // Custom parameters
+  WiFiManagerParameter custom_api_key("api", "API Key", "", 32);
+  WiFiManagerParameter custom_mode("mode", "Device Mode", "", 16);
+  wm.addParameter(&custom_api_key);
+  wm.addParameter(&custom_mode);
 
-    // 2. WiFi Manager Setup
-    WiFiManager wm;
-    
-    // Custom parameters (displayed in portal, logic to save them to flash not included here)
-    WiFiManagerParameter custom_api_key("api", "API Key", "", 32);
-    WiFiManagerParameter custom_mode("mode", "Device Mode", "", 16);
-    wm.addParameter(&custom_api_key);
-    wm.addParameter(&custom_mode);
+  // AJOUT IMPORTANT : Timeout. Si pas de wifi après 30 sec, on ne bloque pas indéfiniment (vide la batterie)
+  wm.setConfigPortalTimeout(180); // 3 minutes pour configurer si besoin
+  wm.setConnectTimeout(30);       // 30 secondes pour essayer de se connecter au WiFi connu
 
-    // Connect
-    // Creates AP "ESP32_Config_AP" if connection fails
-    if(!wm.autoConnect("ESP32_Config_AP", "12345678")) {
-        Serial.println("Failed to connect and hit timeout");
-        ESP.restart();
-    }
+  // Connexion
+  if(!wm.autoConnect("ESP32_Nichoir_AP", "12345678")) {
+      Serial.println("Echec connexion WiFi ou Timeout -> Dodo");
+      // Si échec wifi, on retourne dormir pour réessayer plus tard
+      // (Code de mise en veille à la fin du setup)
+  } else {
+      Serial.println("WiFi OK");
+      
+      mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+      // Il faut augmenter la taille du buffer pour envoyer de gros paquets (images) si on n'utilise pas le streaming pur
+      mqttClient.setBufferSize(2048); 
+      
+      reconnectMQTT();
 
-    Serial.println("WiFi Connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
+      // --- Initialisation caméra ---
+      TimerCAM.Camera.begin();
+      // UXGA est très grand pour du MQTT, attention à la lenteur. SVGA ou VGA est souvent mieux pour l'IoT.
+      TimerCAM.Camera.sensor->set_pixformat(TimerCAM.Camera.sensor, PIXFORMAT_JPEG);
+      TimerCAM.Camera.sensor->set_framesize(TimerCAM.Camera.sensor, FRAMESIZE_SVGA);
+        TimerCAM.Camera.sensor->set_vflip(TimerCAM.Camera.sensor, 1);
+        TimerCAM.Camera.sensor->set_hmirror(TimerCAM.Camera.sensor, 0); 
 
-    // 3. MQTT Setup
-    mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+      // --- Détection du type de réveil ---
+      esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+
+      if (mqttClient.connected()) {
+        if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+          Serial.println("Réveil par signal externe (PIR?)");
+          sendPhotoMQTT();
+        } else if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+          Serial.println("Réveil par timer (Status)");
+          sendBatteryMQTT();
+        } else {
+          Serial.println("Premier démarrage ou Reset");
+          sendBatteryMQTT(); // Envoie au moins la batterie pour dire "Je suis là"
+        }
+        // Petit délai pour être sûr que le message MQTT parte
+        delay(500); 
+      }
+      
+      TimerCAM.Camera.deinit();
+  }
+
+  // --- Préparer le deep sleep ---
+  // Maintien de l'alimentation (Spécifique M5TimerCAM)
+  gpio_hold_en((gpio_num_t)POWER_HOLD_PIN);
+  gpio_deep_sleep_hold_en();
+
+  // Configuration du réveil
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)CAM_EXT_WAKEUP_PIN, 1); // HIGH = réveil
+  esp_sleep_enable_timer_wakeup(WAKEUP_INTERVAL_SEC * 1000000ULL); 
+
+  Serial.println("Mise en veille...");
+  Serial.flush(); // Attendre que le Serial ait fini d'écrire
+  esp_deep_sleep_start();
 }
 
 void loop() {
-    // Keep MQTT connection alive
-    if (!mqttClient.connected()) {
-        reconnectMQTT();
-    }
-    mqttClient.loop();
-
-    // Non-blocking timer
-    if (millis() - lastCaptureTime > SEND_INTERVAL) {
-        lastCaptureTime = millis();
-
-        if (TimerCAM.Camera.get()) {
-            Serial.print("Photo captured. Size: ");
-            Serial.print(TimerCAM.Camera.fb->len);
-            Serial.println(" bytes");
-
-            // Commencer la publication
-        if (mqttClient.beginPublish(MQTT_TOPIC, TimerCAM.Camera.fb->len, false)) {
-            // Écrire les données de l'image
-            mqttClient.write(TimerCAM.Camera.fb->buf, TimerCAM.Camera.fb->len);
-            // Terminer la publication
-            if (mqttClient.endPublish()) {
-                Serial.println("Image envoyée via MQTT !");
-            } else {
-                Serial.println("Erreur lors de la fin de l'envoi MQTT...");
-            }
-        } else {
-            Serial.println("Erreur lors du début de l'envoi MQTT...");
-        }
-
-            // Free camera memory
-            TimerCAM.Camera.free();
-        } else {
-            Serial.println("Failed to capture image");
-        }
-    }
+  // Vide
 }
