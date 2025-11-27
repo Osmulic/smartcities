@@ -36,7 +36,7 @@ void sendPhotoMQTT() {
     float level = TimerCAM.Power.getBatteryLevel();
     char batteryInfo[32];
     // On ajoute un marqueur ### pour séparer l'image du texte à la réception
-    snprintf(batteryInfo, sizeof(batteryInfo), "###%.2f%", level);
+    snprintf(batteryInfo, sizeof(batteryInfo), "###%.2f", level);
 
     // Taille totale = image + "###" + info batterie
     size_t totalSize = TimerCAM.Camera.fb->len + strlen(batteryInfo);
