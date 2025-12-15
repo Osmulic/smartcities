@@ -4,13 +4,13 @@
 
 // Note : SSID et PASS sont gérés par WiFiManager, pas besoin de les définir ici sauf si tu veux forcer une connexion code.
 
-#define MQTT_SERVER      "192.168.2.41"
+#define MQTT_SERVER      "raspberryalex.local"
 #define MQTT_PORT        1883
 #define MQTT_TOPIC_PHOTO "nichoir/photo"
 #define MQTT_TOPIC_BATT  "nichoir/battery" // CORRIGÉ : Topic distinct
 
 #define CAM_EXT_WAKEUP_PIN 4
-#define WAKEUP_INTERVAL_SEC 10 // Attention: 10 secondes pour le test. Mettre 86400 pour 24h.
+#define WAKEUP_INTERVAL_SEC 30 // Attention: 10 secondes pour le test. Mettre 86400 pour 24h.
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -34,7 +34,6 @@ void sendPhotoMQTT() {
 
     // Récupérer le niveau de batterie
     float level = TimerCAM.Power.getBatteryLevel();
-    level = 30.0;
     char batteryInfo[32];
     // On ajoute un marqueur ### pour séparer l'image du texte à la réception
     snprintf(batteryInfo, sizeof(batteryInfo), "###%.2f", level);
@@ -70,7 +69,6 @@ void sendPhotoMQTT() {
 
 void sendBatteryMQTT() {
   float level = TimerCAM.Power.getBatteryLevel();
-  level = 66.4;
   char payload[32];
   snprintf(payload, sizeof(payload), "%.2f", level); // Juste le chiffre, plus facile à tracer dans Home Assistant
   
