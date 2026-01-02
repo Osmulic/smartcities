@@ -1,0 +1,1 @@
+@reboot /home/alex/Desktop/projet_Nichoir/lancer.sh > /home/alex/Desktop/projet_Nichoir/logs.txt 2>&1
