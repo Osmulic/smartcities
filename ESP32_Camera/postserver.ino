@@ -10,6 +10,7 @@
 #define MQTT_TOPIC_BATT  "nichoir/battery" // CORRIGÉ : Topic distinct
 
 #define CAM_EXT_WAKEUP_PIN 4
+#define IR_LED 13
 #define WAKEUP_INTERVAL_SEC 30 // Attention: 10 secondes pour le test. Mettre 86400 pour 24h.
 
 WiFiClient wifiClient;
@@ -44,12 +45,13 @@ void sendPhotoMQTT() {
     // Augmenter la taille du buffer MQTT si nécessaire (par défaut c'est souvent 256 octets, trop petit pour une image)
     // Note: beginPublish gère le streaming, donc le buffer size est moins critique, mais attention aux limites.
     if (mqttClient.beginPublish(MQTT_TOPIC_PHOTO, totalSize, false)) {
-      
+      digitalWrite(IR_LED, HIGH);
       // 1. Envoyer l'image
       mqttClient.write(TimerCAM.Camera.fb->buf, TimerCAM.Camera.fb->len);
       
       // 2. Envoyer les infos batterie à la suite
       mqttClient.write((const uint8_t*)batteryInfo, strlen(batteryInfo));
+      digitalWrite(IR_LED, LOW);
 
       if (mqttClient.endPublish()) {
         Serial.printf("Image + batterie envoyées (%.2f V)\n", level);
@@ -80,6 +82,7 @@ void sendBatteryMQTT() {
 void setup() {
   Serial.begin(115200);
   TimerCAM.begin(true);
+  pinMode(IR_LED, OUTPUT);
 
   // --- Connexion WiFi ---
   WiFiManager wm;
